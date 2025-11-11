@@ -395,9 +395,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
               <?php
                 $displayName = trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? ''));
                 if ($displayName === '') $displayName = ($user['email'] ?? 'User');
-                $avatarUrl = 'https://ui-avatars.com/api/?name=' . urlencode($displayName) . '&background=0D6EFD&color=fff&size=150';
+                
+                // Check if user has saved profile picture in database
+                $profilePicSrc = '';
+                if (!empty($user['profile_picture'])) {
+                    $profilePicSrc = e($user['profile_picture']);
+                } else {
+                    // Fallback to avatar generator
+                    $profilePicSrc = 'https://ui-avatars.com/api/?name=' . urlencode($displayName) . '&background=0D6EFD&color=fff&size=150';
+                }
               ?>
-              <img id="profileImg" src="<?php echo e($avatarUrl); ?>" 
+              <img id="profileImg" src="<?php echo $profilePicSrc; ?>" 
                    alt="Profile Picture" class="profile-picture">
               <input type="file" id="photoInput" accept=".png,.jpg,.jpeg" style="display: none;">
               <button type="button" class="profile-edit-btn" id="changePhotoBtn" title="Change Photo">
@@ -556,7 +564,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     document.addEventListener('DOMContentLoaded', function() {
       // Change photo
       const changePhotoBtn = document.getElementById('changePhotoBtn');
-      if (changePhotoBtn) changePhotoBtn.addEventListener('click', () => document.getElementById('photoInput').click());
+      const photoInput = document.getElementById('photoInput');
+      const profileImg = document.getElementById('profileImg');
+      const photoMessage = document.getElementById('photoMessage');
+
+      if (changePhotoBtn) {
+        changePhotoBtn.addEventListener('click', () => photoInput.click());
+      }
+
+      // Handle photo upload
+      if (photoInput) {
+        photoInput.addEventListener('change', function() {
+          const file = this.files[0];
+          if (!file) return;
+
+          const formData = new FormData();
+          formData.append('profile_picture', file);
+
+          photoMessage.textContent = 'Uploading...';
+          photoMessage.className = 'validation-message';
+          photoMessage.style.display = 'block';
+
+          fetch('upload_profile_picture.php', {
+            method: 'POST',
+            body: formData
+          })
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              // Update image src with cache buster to prevent caching issues
+              const timestamp = new Date().getTime();
+              profileImg.src = data.path + '?t=' + timestamp;
+              photoMessage.textContent = '✓ Profile picture updated!';
+              photoMessage.className = 'validation-message text-success';
+              photoInput.value = ''; // Reset file input
+            } else {
+              photoMessage.textContent = '✗ ' + (data.message || 'Upload failed');
+              photoMessage.className = 'validation-message text-danger';
+            }
+          })
+          .catch(err => {
+            photoMessage.textContent = '✗ Upload error: ' + err;
+            photoMessage.className = 'validation-message text-danger';
+          });
+        });
+      }
 
       // Toggle password visibility
       document.querySelectorAll('.password-toggle-btn').forEach(btn => {
